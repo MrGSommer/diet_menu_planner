@@ -2,31 +2,71 @@ import streamlit as st
 import os
 from supabase import create_client, Client
 import supabase
-
+import neo4j
+from neo4j import GraphDatabase
 
 
 # Zugangsdaten aus den Secrets laden
 stored_username = st.secrets["credentials"]["username"]
 stored_password = st.secrets["credentials"]["password"]
+neo4j_uri = st.secrets["credentials"]["uri"]  # URI der Neo4j-Datenbank
 
 
+# Funktion zur Erstellung eines Neo4j-Clients
 def call_client():
-    url: str = os.environ.get("SUPABASE_URL")
-    key: str = os.environ.get("SUPABASE_KEY")
+    uri = neo4j_uri
+    username = stored_username
+    password = stored_password
     
-    if url and key:
-        supabase: Client = create_client(url, key)
-    else:
-        st.error("Keine Verbindung mit der Datenbank möglich. Prüfen Sie die Credentials")
+    try:
+        # Verbindung mit der Neo4j-Datenbank herstellen
+        driver = GraphDatabase.driver(uri, auth=(username, password))
+        return driver
+    except Exception as e:
+        st.error(f"Keine Verbindung mit der Datenbank möglich: {str(e)}")
+        return None
 
 
-def fetch_table(table_name):
-    response = supabase.table(f"{table_name}").select("*").execute()
 
-    if response:
-        return response
-    else:
-        st.error("Keine Daten gefunden")
+# Funktion zum Testen von Schreib- und Löschoperationen
+def test_write_read_delete():
+    driver = call_client()
+    
+    if driver:
+        try:
+            with driver.session() as session:
+                # 1. Schreiben: Ein Beispielknoten erstellen
+                session.run("CREATE (n:TestNode {name: 'StreamlitTest'})")
+                st.write("Knoten erstellt.")
+
+                # 2. Lesen: Den Knoten abfragen
+                result = session.run("MATCH (n:TestNode {name: 'StreamlitTest'}) RETURN n")
+                nodes = [record["n"] for record in result]
+                
+                if nodes:
+                    st.write("Knoten gelesen:", nodes)
+                else:
+                    st.error("Fehler beim Lesen des Knotens.")
+
+                # 3. Löschen: Den Knoten entfernen
+                session.run("MATCH (n:TestNode {name: 'StreamlitTest'}) DETACH DELETE n")
+                st.write("Knoten gelöscht.")
+
+                # Erfolgreicher Abschluss, Schreibrechte vorhanden
+                st.session_state["write_test_successful"] = True
+                st.success("Schreibrechte vorhanden.")
+        except Exception as e:
+            st.error(f"Fehler bei der Testabfrage: {str(e)}")
+        finally:
+            driver.close()
+
+# Button zur Auslösung des Tests
+if st.button("Test Schreibrechte"):
+    test_write_read_delete()
+
+# Ausgabe des Session-Status
+if "write_test_successful" in st.session_state and st.session_state["write_test_successful"]:
+    st.write("Schreibrechte erfolgreich getestet.")
 
 
 
