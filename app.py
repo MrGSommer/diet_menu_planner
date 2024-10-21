@@ -4,28 +4,24 @@ from supabase import create_client, Client
 import supabase
 import neo4j
 from neo4j import GraphDatabase
+import bcrypt
+
 
 
 # Zugangsdaten aus den Secrets laden
 stored_username = st.secrets["credentials"]["username"]
 stored_password = st.secrets["credentials"]["password"]
-neo4j_uri = st.secrets["credentials"]["uri"]  # URI der Neo4j-Datenbank
+neo4j_uri = st.secrets["credentials"]["AURA_NEO4J_URI"]  # URI der Neo4j-Datenbank
 
 
-# Funktion zur Erstellung eines Neo4j-Clients
-def call_client():
-    uri = neo4j_uri
-    username = stored_username
-    password = stored_password
-    
+# Neo4j driver
+def call_client(uri, user, password):
     try:
-        # Verbindung mit der Neo4j-Datenbank herstellen
-        driver = GraphDatabase.driver(uri, auth=(username, password))
+        driver = GraphDatabase.driver(uri, auth=(user, password))
         return driver
     except Exception as e:
-        st.error(f"Keine Verbindung mit der Datenbank möglich: {str(e)}")
+        st.error(f"Error connecting to Neo4j: {e}")
         return None
-
 
 
 # Funktion zum Testen von Schreib- und Löschoperationen
@@ -68,6 +64,38 @@ if st.button("Test Schreibrechte"):
 if "write_test_successful" in st.session_state and st.session_state["write_test_successful"]:
     st.write("Schreibrechte erfolgreich getestet.")
 
+# Create user (Admin function)
+def create_user(driver, vorname, nachname, username, password, role):
+    if not check_role("admin"):
+        return
+    hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+    cypher_query = """
+    CREATE (a:Nutzer {
+        vorname: $vorname,
+        nachname: $nachname,
+        username: $username,
+        passwort: $passwort,
+        rolle: $rolle
+    })
+    """
+    query_params = {
+        "vorname": vorname,
+        "nachname": nachname,
+        "username": username,
+        "passwort": hashed_password.decode('utf-8'),
+        "rolle": role
+    }
+    try:
+        with driver.session() as session:
+            session.run(cypher_query, query_params)
+            st.success("Benutzer erfolgreich erstellt.")
+    except Exception as e:
+        st.error(f"Fehler beim Erstellen des Benutzers: {e}")
+
+def forgot_passwort(driver, username, role):
+    # hilft das passwort neu zu erstellen
+    # zeigt das neue passwort mit sucsess an und schreibt es in die datenbank mit hash
+    # nur wenn role ist admin funktion offen mit tab(Admin)
 
 
 # Funktion für das Login-Formular und Überprüfung
@@ -96,34 +124,38 @@ def login():
 def main_app():
     """Die Hauptfunktionalität der App, sichtbar nach erfolgreichem Login."""
     st.success(f"Sie sind eingeloggt als: {st.session_state['username']}")
-    # Hier die Hauptfunktionen der App hinzufügen
-
-    st.tabs = tab1, tab2, tab3, tab4
-
-
-    with tab1:
-        # Hello you two sporty sexy people
-        # Greetings and explenaiton of app
-
-    with tab2:
-        # Meal-Generator
-        # Goal is for the meal decide how many gramms of each ingridient is for whom (Gabriel or Anita) -> we will cook the meal in the same pan but need to know how much gramms of the final meal is for whom in % or by tiping in the total weight of the meal and it calculates
-        # Selection of all menues done by the two members Gabriel & Anita
-        # Selection of all menues not done by the two
-
-
-    with tab3:
-        # Name: Gabriel
-        # Set-Up for Gabriel and all data related
-
-        # First Dropdown with menue facorite
-        # col1 = breakfast, col2 = lunch, col3 = dinner
-
-        # Snackdropdown
-
-        # Then display all available food types and gramms to use of each meal-tipe (breakfast, snack, lunch, snack, dinner, snack)
-        # possible to select the meal-typ and the main ingridient and then display possible meals
     
+    # Tabs für verschiedene Bereiche der App
+    tab1, tab2, tab3, tab4 = st.tabs(["Begrüßung", "Meal-Generator", "Gabriel's Daten", "Anita's Daten"])
+
+    # Tab 1: Begrüßung und Einführung
+    with tab1:
+        st.write("Willkommen, Gabriel und Anita!")
+        st.write("Hier könnt ihr eure Mahlzeiten verwalten und personalisierte Gerichte erstellen.")
+
+    # Tab 2: Meal-Generator
+    with tab2:
+        st.write("Meal-Generator")
+        st.write("Ziel: Für das Gericht entscheiden, wie viele Gramm jeder (Gabriel oder Anita) bekommt.")
+        st.write("Ihr könnt das Gesamtgewicht des Essens eingeben und es berechnet, wie viel Gramm für wen ist.")
+        st.write("Auswahl der Menüs, die von Gabriel & Anita erstellt wurden:")
+        st.write("...")
+
+    # Tab 3: Gabriel's Daten
+    with tab3:
+        st.write("Name: Gabriel")
+        st.write("Setup für Gabriel und alle dazugehörigen Daten")
+        st.write("Lieblingsmenü:")
+        st.write("Dropdown mit Auswahl für Frühstück, Mittagessen, Abendessen")
+        st.write("Snack-Dropdown:")
+        st.write("Alle verfügbaren Lebensmittel anzeigen, sortiert nach Mahlzeitentyp.")
+        st.write("...")
+
+    # Tab 4: Anita's Daten
+    with tab4:
+        st.write("Name: Anita")
+        st.write("Setup für Anita und alle dazugehörigen Daten")
+        st.write("...")
 
 # Ausführen der App
 def landing_page():
