@@ -58,6 +58,31 @@ def main_app():
     st.success(f"Sie sind eingeloggt als: {st.session_state['username']}")
     # Hier die Hauptfunktionen der App hinzufügen
 
+    st.tabs = tab1, tab2, tab3, tab4
+
+
+    with tab1:
+        # Hello you two sporty sexy people
+        # Greetings and explenaiton of app
+
+    with tab2:
+        # Meal-Generator
+        # Goal is for the meal decide how many gramms of each ingridient is for whom (Gabriel or Anita) -> we will cook the meal in the same pan but need to know how much gramms of the final meal is for whom in % or by tiping in the total weight of the meal and it calculates
+        # Selection of all menues done by the two members Gabriel & Anita
+        # Selection of all menues not done by the two
+
+
+    with tab3:
+        # Name: Gabriel
+        # Set-Up for Gabriel and all data related
+
+        # First Dropdown with menue facorite
+        # col1 = breakfast, col2 = lunch, col3 = dinner
+
+        # Snackdropdown
+
+        # Then display all available food types and gramms to use of each meal-tipe (breakfast, snack, lunch, snack, dinner, snack)
+        # possible to select the meal-typ and the main ingridient and then display possible meals
     
 
 # Ausführen der App
