@@ -1,0 +1,21 @@
+# Python cache
+__pycache__/
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# Temp files created by Python
+*.py[cod]
+
+# Virtual environment
+venv/
+env/
+
+# Ignore environment variables and secrets
+.env
+.streamlit
+
+# Ignore temporary files
+temp/
+*.xlsx
+*.xls
