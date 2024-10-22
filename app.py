@@ -1,18 +1,23 @@
 import streamlit as st
-import os
-from supabase import create_client, Client
-import supabase
-import neo4j
 from neo4j import GraphDatabase
-import bcrypt
+from passlib.context import CryptContext
 
+# Zugangsdaten für Neo4j (Admin-Daten)
+neo4j_uri = st.secrets["credentials"]["AURA_NEO4J_URI"]
+neo4j_user = st.secrets["credentials"]["username"]
+neo4j_password = st.secrets["credentials"]["password"]
 
+# CryptContext erstellen
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
-# Zugangsdaten aus den Secrets laden
-stored_username = st.secrets["credentials"]["username"]
-stored_password = st.secrets["credentials"]["password"]
-neo4j_uri = st.secrets["credentials"]["AURA_NEO4J_URI"]  # URI der Neo4j-Datenbank
+# Initialisierung von session_states
+if 'connection_type' not in st.session_state:
+    st.session_state['connection_type'] = 'Aura'
 
+if 'logged_in' not in st.session_state:
+    st.session_state["logged_in"] = False
+    st.session_state["role"] = None
+    st.session_state["username"] = None
 
 # Neo4j driver
 def call_client(uri, user, password):
@@ -23,52 +28,82 @@ def call_client(uri, user, password):
         st.error(f"Error connecting to Neo4j: {e}")
         return None
 
+# Authenticate user using platform login data (e.g., diet tool)
+def authenticate_user(driver, diet_tool_username, diet_tool_password):
+    """Authentifiziert einen Benutzer, indem die Daten aus Neo4j für das Diet-Tool abgerufen und das Passwort geprüft wird."""
+    cypher_query = """
+    MATCH (a:Nutzer {username: $username})
+    RETURN a.passwort AS passwort, a.rolle AS rolle, a.vorname AS vorname
+    """
+    query_params = {"username": diet_tool_username}
+    try:
+        with driver.session() as session:
+            result = session.run(cypher_query, query_params)
+            user = result.single()
+            # Passwort mit passlib verifizieren
+            if user and pwd_context.verify(diet_tool_password, user["passwort"]):
+                return True, user["rolle"], user["vorname"]
+            else:
+                return False, None, None
+    except Exception as e:
+        st.error(f"Fehler bei der Authentifizierung: {e}")
+        return False, None, None
 
-# Funktion zum Testen von Schreib- und Löschoperationen
-def test_write_read_delete():
-    driver = call_client()
-    
-    if driver:
-        try:
-            with driver.session() as session:
-                # 1. Schreiben: Ein Beispielknoten erstellen
-                session.run("CREATE (n:TestNode {name: 'StreamlitTest'})")
-                st.write("Knoten erstellt.")
+# Funktion für das Login-Formular und Überprüfung
+def login():
+    """Zeigt das Login-Formular an und verarbeitet die Eingaben."""
+    if "logged_in" not in st.session_state:
+        st.session_state["logged_in"] = False
 
-                # 2. Lesen: Den Knoten abfragen
-                result = session.run("MATCH (n:TestNode {name: 'StreamlitTest'}) RETURN n")
-                nodes = [record["n"] for record in result]
-                
-                if nodes:
-                    st.write("Knoten gelesen:", nodes)
+    # Wenn nicht eingeloggt, Login-Formular anzeigen
+    if not st.session_state["logged_in"]:
+        st.write("Bitte einloggen")
+        diet_tool_username = st.text_input("Username")
+        diet_tool_password = st.text_input("Password", type="password")
+
+        if st.button("Login"):
+            # Verbindung zur Neo4j-Datenbank herstellen
+            driver = call_client(neo4j_uri, neo4j_user, neo4j_password)
+            if driver:
+                authenticated, role, vorname = authenticate_user(driver, diet_tool_username, diet_tool_password)
+                if authenticated:
+                    st.session_state["logged_in"] = True
+                    st.session_state["username"] = diet_tool_username
+                    st.session_state["role"] = role
+                    st.success(f"Willkommen, {vorname}!")
                 else:
-                    st.error("Fehler beim Lesen des Knotens.")
+                    st.error("Falscher Username oder Passwort. Bitte versuchen Sie es erneut.")
+                driver.close()
+    else:
+        st.success(f"Sie sind eingeloggt als: {st.session_state['username']}")
 
-                # 3. Löschen: Den Knoten entfernen
-                session.run("MATCH (n:TestNode {name: 'StreamlitTest'}) DETACH DELETE n")
-                st.write("Knoten gelöscht.")
-
-                # Erfolgreicher Abschluss, Schreibrechte vorhanden
-                st.session_state["write_test_successful"] = True
-                st.success("Schreibrechte vorhanden.")
-        except Exception as e:
-            st.error(f"Fehler bei der Testabfrage: {str(e)}")
-        finally:
-            driver.close()
-
-# Button zur Auslösung des Tests
-if st.button("Test Schreibrechte"):
-    test_write_read_delete()
-
-# Ausgabe des Session-Status
-if "write_test_successful" in st.session_state and st.session_state["write_test_successful"]:
-    st.write("Schreibrechte erfolgreich getestet.")
+# Reset password
+def reset_password(driver, username, new_password):
+    """Setzt das Passwort für einen Benutzer in Neo4j zurück."""
+    # Neues Passwort hashen mit passlib
+    hashed_password = pwd_context.hash(new_password)
+    cypher_query = """
+    MATCH (a:Nutzer {username: $username})
+    SET a.passwort = $passwort
+    """
+    query_params = {
+        "username": username,
+        "passwort": hashed_password
+    }
+    try:
+        with driver.session() as session:
+            session.run(cypher_query, query_params)
+            st.success("Passwort erfolgreich zurückgesetzt.")
+    except Exception as e:
+        st.error(f"Fehler beim Zurücksetzen des Passworts: {e}")
 
 # Create user (Admin function)
 def create_user(driver, vorname, nachname, username, password, role):
+    """Erstellt einen neuen Benutzer in der Neo4j-Datenbank."""
     if not check_role("admin"):
         return
-    hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+    # Passwort hashen mit passlib
+    hashed_password = pwd_context.hash(password)
     cypher_query = """
     CREATE (a:Nutzer {
         vorname: $vorname,
@@ -82,7 +117,7 @@ def create_user(driver, vorname, nachname, username, password, role):
         "vorname": vorname,
         "nachname": nachname,
         "username": username,
-        "passwort": hashed_password.decode('utf-8'),
+        "passwort": hashed_password,
         "rolle": role
     }
     try:
@@ -92,39 +127,18 @@ def create_user(driver, vorname, nachname, username, password, role):
     except Exception as e:
         st.error(f"Fehler beim Erstellen des Benutzers: {e}")
 
-def forgot_passwort(driver, username, role):
-    # hilft das passwort neu zu erstellen
-    # zeigt das neue passwort mit sucsess an und schreibt es in die datenbank mit hash
-    # nur wenn role ist admin funktion offen mit tab(Admin)
+def check_role(role):
+    """Prüft, ob der eingeloggte Benutzer die entsprechende Rolle hat."""
+    if st.session_state.get("role") != role:
+        st.warning(f"Diese Aktion ist nur für {role}s verfügbar.")
+        return False
+    return True
 
-
-# Funktion für das Login-Formular und Überprüfung
-def login():
-    """Zeigt das Login-Formular an und verarbeitet die Eingaben."""
-    if "logged_in" not in st.session_state:
-        st.session_state["logged_in"] = False
-
-    # Wenn nicht eingeloggt, Login-Formular anzeigen
-    if not st.session_state["logged_in"]:
-        st.write("Bitte einloggen")
-        username = st.text_input("Username")
-        password = st.text_input("Password", type="password")
-
-        if st.button("Login"):
-            if username == stored_username and password == stored_password:
-                st.session_state["logged_in"] = True
-                st.session_state["username"] = username
-                st.success(f"Willkommen, {username}!")
-            else:
-                st.error("Falscher Username oder Passwort. Wenden Sie sich an Ihren Systemadministrator.")
-    else:
-        st.success(f"Sie sind eingeloggt als: {st.session_state['username']}")
-        
 # Hauptanwendung der App
 def main_app():
     """Die Hauptfunktionalität der App, sichtbar nach erfolgreichem Login."""
     st.success(f"Sie sind eingeloggt als: {st.session_state['username']}")
-    
+
     # Tabs für verschiedene Bereiche der App
     tab1, tab2, tab3, tab4 = st.tabs(["Begrüßung", "Meal-Generator", "Gabriel's Daten", "Anita's Daten"])
 
