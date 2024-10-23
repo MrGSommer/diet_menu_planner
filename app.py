@@ -4,8 +4,8 @@ from passlib.context import CryptContext
 
 # Zugangsdaten für Neo4j (Admin-Daten)
 neo4j_uri = st.secrets["credentials"]["AURA_NEO4J_URI"]
-neo4j_user = st.secrets["credentials"]["username"]
-neo4j_password = st.secrets["credentials"]["password"]
+neo4j_user = st.secrets["credentials"]["AURA_NEO4J_USERNAME"]
+neo4j_password = st.secrets["credentials"]["AURA_NEO4J_PASSWORD"]
 
 # CryptContext erstellen
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
