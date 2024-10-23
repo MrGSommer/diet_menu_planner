@@ -15,8 +15,9 @@ env/
 .env
 .streamlit
 
-# Ignore temporary files
+# Ignore files
 temp/
 *.xlsx
 *.xls
 archiv/
+chache_bot.py

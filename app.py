@@ -33,15 +33,18 @@ if 'connection_type' not in st.session_state:
 # CryptContext erstellen für Passwort-Hashing
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
+
 # Funktion zum Hashen von Eingaben wie Passwort
 def hash_value(input_value):
     # Hasht den übergebenen Wert (z.B. Passwort)
     return pwd_context.hash(input_value)
 
+
 # Funktion zur Verifizierung von gehashten Werten
 def verify_value(input_value, hashed_value):
     # Überprüft, ob der Input mit dem gehashten Wert übereinstimmt
     return pwd_context.verify(input_value, hashed_value)
+
 
 # Neo4j-Verbindung herstellen
 def call_client(neo4j_uri, neo4j_user, neo4j_password):
@@ -52,6 +55,7 @@ def call_client(neo4j_uri, neo4j_user, neo4j_password):
     except Exception as e:
         st.error(f"Verbindungsfehler: {e}")
         return None
+
 
 # Authentifizierung des Benutzers
 def authenticate_user(driver, user_email, user_password):
@@ -76,6 +80,7 @@ def authenticate_user(driver, user_email, user_password):
         st.error(f"Fehler bei der Authentifizierung: {e}")
         return False, None
 
+
 # Passwort zurücksetzen
 def reset_password(driver, user_email, new_password):
     # Setzt das Passwort eines Benutzers in der Datenbank zurück
@@ -94,6 +99,7 @@ def reset_password(driver, user_email, new_password):
             st.success("Passwort erfolgreich zurückgesetzt.")
     except Exception as e:
         st.error(f"Fehler beim Zurücksetzen des Passworts: {e}")
+
 
 # Benutzer erstellen
 def create_user(driver, user_vorname, user_nachname, user_email, user_password):
@@ -132,6 +138,7 @@ def create_user(driver, user_vorname, user_nachname, user_email, user_password):
     except Exception as e:
         st.error(f"Fehler beim Erstellen des Benutzers: {e}")
 
+
 # Berechnung der Mitgliedsdauer basierend auf dem Registrierungsdatum
 def calculate_membership_duration(registration_date):
     # Berechnet, wie lange der Benutzer bereits registriert ist
@@ -141,6 +148,7 @@ def calculate_membership_duration(registration_date):
     years = delta.days // 365
     months = (delta.days % 365) // 30
     return years, months
+
 
 # Login und Registrierung
 def login():
@@ -201,10 +209,11 @@ def login():
     else:
         st.success(f"Sie sind eingeloggt als: {st.session_state['user_vorname']}")
 
+
 # Hauptanwendung
 def main_app():
     # Motivierende Nachricht
-    st.success(f"Willkommen - schön, dass Du wieder hier bist, {st.session_state['user_vorname']}! Lass uns loslegen!")
+    st.success(f"Willkommen - schön, dass Du wieder hier bist, {st.session_state['user_vorname']}. Lass uns loslegen!")
     
     # Tabs mit personalisiertem Inhalt
     tab1, tab2, tab3, tab4 = st.tabs(["Einführung", "Meal-Generator", "Ernährungsplan", "Profil"])
@@ -221,6 +230,7 @@ def main_app():
         st.write(f"Profil von {st.session_state['user_vorname']}")
         st.write(f"Registrierungsdatum: {readable_registration_date}")
         st.write(f"Mitglied seit: {st.session_state['membership_duration_years']} Jahren und {st.session_state['membership_duration_months']} Monaten.")
+
 
 # Startseite
 def landing_page():
