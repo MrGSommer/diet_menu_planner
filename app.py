@@ -7,9 +7,6 @@ neo4j_uri = st.secrets["credentials"]["AURA_NEO4J_URI"]
 neo4j_user = st.secrets["credentials"]["AURA_NEO4J_USERNAME"]
 neo4j_password = st.secrets["credentials"]["AURA_NEO4J_PASSWORD"]
 
-# CryptContext erstellen
-pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
-
 # Initialisierung von session_states
 if 'connection_type' not in st.session_state:
     st.session_state['connection_type'] = 'Aura'
@@ -18,6 +15,40 @@ if 'logged_in' not in st.session_state:
     st.session_state["logged_in"] = False
     st.session_state["role"] = None
     st.session_state["user_email"] = None
+
+
+
+# CryptContext erstellen
+pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
+
+# Funktion zum Hashen von Inputs (z.B. user_email oder user_password)
+def hash_value(input_value):
+    """
+    Hasht den übergebenen Wert (z.B. user_email, user_password).
+    
+    Args:
+    input_value (str): Der zu hashende Wert (z.B. E-Mail oder Passwort).
+    
+    Returns:
+    str: Der gehashte Wert.
+    """
+    return pwd_context.hash(input_value)
+
+# Funktion zur Verifizierung von Inputs (Überprüfen von gehashten Werten)
+def verify_value(input_value, hashed_value):
+    """
+    Überprüft, ob ein Input mit einem gehashten Wert übereinstimmt.
+    
+    Args:
+    input_value (str): Der zu prüfende Wert (z.B. E-Mail oder Passwort).
+    hashed_value (str): Der gehashte Wert zum Vergleich.
+    
+    Returns:
+    bool: True, wenn der Input mit dem gehashten Wert übereinstimmt, False andernfalls.
+    """
+    return pwd_context.verify(input_value, hashed_value)
+
+
 
 # Neo4j driver
 def call_client(uri, user, password):
@@ -56,16 +87,17 @@ def authenticate_user(driver, user_email, user_password):
         with driver.session() as session:
             result = session.run(cypher_query, query_params)
             user = result.single()
-            # Passwort mit passlib verifizieren
-            if user and pwd_context.verify(user_password, user["user_passwort"]):
+            # E-Mail und Passwort mit passlib verifizieren
+            if user and verify_value(user_password, user["user_passwort"]):
                 st.success("Benutzer erfolgreich authentifiziert.")
                 return True, user["user_role"], user["user_vorname"]
             else:
-                st.error("Falsches Passwort.")
+                st.error("Falsches Passwort oder E-Mail.")
                 return False, None, None
     except Exception as e:
         st.error(f"Fehler bei der Authentifizierung: {e}")
         return False, None, None
+
 
 
 # Funktion für das Login- und Registrierungsformular und Überprüfung
@@ -82,17 +114,20 @@ def login():
 
         # Login-Button
         if st.button("Login"):
+            # E-Mail hashen zum Vergleichen
+            hashed_user_email = hash_value(user_email)
+
             # Verbindung zur Neo4j-Datenbank herstellen
             driver = call_client(neo4j_uri, neo4j_user, neo4j_password)
             if driver:
-                authenticated, role, vorname = authenticate_user(driver, user_email, user_password)
+                authenticated, role, vorname = authenticate_user(driver, hashed_user_email, user_password)
                 if authenticated:
                     st.session_state["logged_in"] = True
                     st.session_state["user_email"] = user_email
                     st.session_state["role"] = role
                     st.success(f"Willkommen, {vorname}!")
                 else:
-                    st.error("Falsches E-Mail oder Passwort. Bitte versuchen Sie es erneut.")
+                    st.error("Falsche E-Mail oder Passwort. Bitte versuchen Sie es erneut.")
                 driver.close()
 
         # Benutzer erstellen - Registrierungsformular
@@ -123,14 +158,16 @@ def login():
 # Reset password
 def reset_password(driver, user_email, new_password):
     """Setzt das Passwort für einen Benutzer in Neo4j zurück."""
-    # Neues Passwort hashen mit passlib
-    hashed_password = pwd_context.hash(new_password)
+    # Neues Passwort und E-Mail hashen
+    hashed_password = hash_value(new_password)
+    hashed_email = hash_value(user_email)
+
     cypher_query = """
     MATCH (a:Nutzer {user_email: $user_email})
     SET a.passwort = $user_passwort
     """
     query_params = {
-        "user_email": user_email,
+        "user_email": hashed_email,
         "user_passwort": hashed_password
     }
     try:
@@ -146,8 +183,10 @@ def create_user(driver, user_vorname, user_nachname, user_email, user_password, 
     """Erstellt einen neuen Benutzer in der Neo4j-Datenbank."""
     if not check_role("admin"):
         return
-    # Passwort hashen mit passlib
-    hashed_password = pwd_context.hash(user_password)
+    # Passwort und E-Mail hashen mit passlib
+    hashed_password = hash_value(user_password)
+    hashed_email = hash_value(user_email)
+
     cypher_query = """
     CREATE (a:Nutzer {
         vorname: $user_vorname,
@@ -160,7 +199,7 @@ def create_user(driver, user_vorname, user_nachname, user_email, user_password, 
     query_params = {
         "user_vorname": user_vorname,
         "user_nachname": user_nachname,
-        "user_email": user_email,
+        "user_email": hashed_email,
         "user_passwort": hashed_password,
         "user_role": user_role
     }
@@ -170,7 +209,6 @@ def create_user(driver, user_vorname, user_nachname, user_email, user_password, 
             st.success("Benutzer erfolgreich erstellt.")
     except Exception as e:
         st.error(f"Fehler beim Erstellen des Benutzers: {e}")
-
 
 def check_role(role):
     """Prüft, ob der eingeloggte Benutzer die entsprechende Rolle hat."""
